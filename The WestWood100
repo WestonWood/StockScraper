@@ -1,0 +1,159 @@
+import pandas as pd
+import yfinance as yf
+from datetime import datetime, timedelta
+from yahoo_fin import stock_info as si
+
+tickers = ['ABEV', 'ADSK', 'AER', 'AI', 'ALB', 'ALGN', 'AMAT', 'AMD', 'AMZN', 'APA', 'APLS', 'AAPL', 'AXON', 'BBD', 'BEKE',
+           'BILL', 'BLDR', 'BX', 'CARR', 'CCL', 'CE', 'CELH', 'CHWY', 'COCO', 'COIN', 'CPNG', 'CRWD', 'CTRA', 'CVE',
+           'DASH', 'DDOG', 'DKNG', 'EBR', 'EC', 'ENPH', 'ENTG', 'EQT', 'ETSY', 'EXAS', 'FANG', 'FCNCA', 'FITB', 'FLEX',
+           'GFS', 'GOOG', 'GOOGL', 'GRAB', 'H', 'HST', 'HUBS', 'ICLR', 'IDXX', 'IOT', 'ITUB', 'LCID', 'LSCC', 'LVS',
+           'MBLY', 'MDB', 'MELI', 'MKTX', 'MPWR', 'MRNA', 'MRO', 'NET', 'NU', 'NUE', 'NXPI', 'OKTA', 'ON', 'PAYC', 'PEN',
+           'PHM', 'PINS', 'RBLX', 'RCL', 'RIVN', 'SE', 'SEDG', 'SHOP', 'SLB', 'SNAP', 'SNOW', 'SPOT', 'SQ', 'SQM', 'SRPT',
+           'SWAV', 'SYF', 'TEAM', 'TFC', 'TOST', 'TRU', 'TSLA', 'TTD', 'TWLO', 'U', 'UAL', 'UBER', 'ULTA', 'WBD', 'Z', 'ZG', 'ZM']
+
+# Get the current date
+current_date = datetime.now()
+
+# Calculate the start date (current date - 100 days)
+start_date = current_date - timedelta(days=100)
+
+# Convert dates to string format
+start_date_str = start_date.strftime('%Y-%m-%d')
+end_date_str = current_date.strftime('%Y-%m-%d')
+
+# Define the file name with "WestWood100" and the current date
+file_name = f'The WestWood100 {current_date.strftime("%Y%m%d_%H%M%S")}.xlsx'
+
+# Create an Excel writer object
+with pd.ExcelWriter(file_name) as writer:
+    overview_data = []
+
+    for ticker in tickers:
+        try:
+            # Download data for the ticker
+            df = yf.download(ticker, start=start_date_str, end=end_date_str, progress=False)
+
+            # Reset index and move the 'Date' column to the far left
+            df.reset_index(inplace=True)
+            df = df[['Date'] + [col for col in df.columns if col != 'Date']]
+
+            # Calculate the previous close to today high percentage
+            df['Previous close to today high %'] = ((df['High'] - df['Close'].shift(1)) / df['Close'].shift(1)) * 100
+
+            # Move the 'Previous close to today high %' column to column H
+            df.insert(7, 'Previous close to today high %', df.pop('Previous close to today high %'))
+
+            # Sort the DataFrame by date in descending order
+            df.sort_values('Date', ascending=False, inplace=True)
+            df.reset_index(drop=True, inplace=True)  # Reset the index
+
+            # Calculate the average of column H
+            average = df['Previous close to today high %'].mean()
+
+            # Write the average to cell I2
+            df.at[0, 'Prev Close to high AVG %'] = average
+
+            # Count the occurrences of values 1 or more in column H and write it to cell K2
+            days_valid_trade = (df['Previous close to today high %'] >= 1).sum()
+            df.at[0, 'Days Valid Trade'] = days_valid_trade
+
+            # Calculate the percentage of "Days Valid Trade" by dividing K2 by the total number of values in column H
+            total_values = len(df['Previous close to today high %'])
+            percentage_days_valid_trade = days_valid_trade / total_values * 100
+
+            # Write the percentage to cell K2
+            df.at[0, 'Days Valid Trade %'] = percentage_days_valid_trade
+
+            # Add "Green" or "Red" based on the "Close" value compared to the previous date's close
+            df['Color'] = ''
+            df.loc[df['Close'] > df['Close'].shift(-1), 'Color'] = 'Green'
+            df.loc[df['Close'] < df['Close'].shift(-1), 'Color'] = 'Red'
+
+            # Count the occurrences of a red day followed by a green day
+            red_green_count = ((df['Color'] == 'Red') & (df['Color'].shift(-1) == 'Green')).sum()
+
+            # Count the occurrences of a green day followed by a green day
+            green_green_count = ((df['Color'] == 'Green') & (df['Color'].shift(-1) == 'Green')).sum()
+
+            # Count the total number of red days
+            total_red_days = (df['Color'] == 'Red').sum()
+
+            # Count the total number of green days
+            total_green_days = (df['Color'] == 'Green').sum()
+
+            # Calculate the ratio of red days followed by green days
+            red_green_ratio = red_green_count / total_red_days * 100
+
+            # Calculate the ratio of green days followed by green days
+            green_green_ratio = green_green_count / total_green_days * 100
+
+            # Calculate the streak indicator
+            streak_indicator = (df['Color'] == df['Color'].shift(1)).sum() / total_values * 100
+
+            # Calculate the RSI indicator
+            delta = df['Close'].diff()
+            gain = delta.where(delta > 0, 0)
+            loss = -delta.where(delta < 0, 0)
+            average_gain = gain.rolling(window=14).mean()
+            average_loss = loss.rolling(window=14).mean()
+            relative_strength = average_gain / average_loss
+            rsi = 100 - (100 / (1 + relative_strength))
+            current_rsi = rsi.iloc[-1]  # RSI value for the current date at closing
+
+            try:
+                current_price = si.get_live_price(ticker)
+            except AssertionError as e:
+                error_message = str(e)
+                if 'Not Found' in error_message:
+                    print(f"Data not found for {ticker}. It may be delisted or unavailable. Skipping...")
+                else:
+                    print(f"Error retrieving data for {ticker}: {error_message}. Skipping...")
+                continue
+
+            # Determine if the stock is currently "Red" or "Green" based on the current price
+            previous_close = df['Close'].iloc[-2]
+            current_color = 'Green' if current_price > previous_close else 'Red'
+
+            # Write the red to green ratio, green to green ratio, streak indicator, RSI indicator, and current color to the DataFrame
+            df.at[0, 'Red Day to Green Day %'] = red_green_ratio
+            df.at[0, 'Green Day to Green Day %'] = green_green_ratio
+            df.at[0, 'Streak Indicator %'] = streak_indicator
+            df.at[0, 'RSI Indicator'] = current_rsi
+
+            # Save data to a sheet in the Excel file
+            df.to_excel(writer, sheet_name=ticker, index=False)
+
+            # Append ticker, Days Valid Trade % value, streak indicator, RSI indicator, and current color to the overview data
+            overview_data.append({
+                'Ticker': ticker,
+                'Days Valid Trade %': percentage_days_valid_trade,
+                'Red Day to Green Day %': red_green_ratio,
+                'Green Day to Green Day %': green_green_ratio,
+                'Current Color': current_color,
+                'Streak Indicator': streak_indicator,
+                'Prev Close to high AVG %': average,
+                'RSI': current_rsi,
+                'Current Price': current_price
+            })
+
+        except Exception as e:
+            print(f"Error processing data for {ticker}: {str(e)}. Skipping...")
+            continue
+
+    # Create a DataFrame for the overview sheet
+    overview_df = pd.DataFrame(overview_data)
+
+    # Rearrange the columns on the overview sheet
+    overview_df = overview_df[['Ticker', 'Days Valid Trade %', 'Red Day to Green Day %', 'Green Day to Green Day %',
+                               'Current Color', 'Streak Indicator', 'Prev Close to high AVG %', 'RSI', 'Current Price']]
+
+    # Sort the overview DataFrame in descending order based on 'Days Valid Trade %'
+    overview_df.sort_values('Days Valid Trade %', ascending=False, inplace=True)
+
+    # Remove the color column from the overview DataFrame
+    overview_df.drop('Current Color', axis=1, inplace=True)
+
+    # Write the overview sheet to the Excel file
+    overview_df.to_excel(writer, sheet_name='Overview', index=False)
+
+print(f"Data has been saved to {file_name}")
