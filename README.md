@@ -9,9 +9,12 @@ The default time period for information/calculation is 100 days. Adjust as desir
 A "Valid Trade" day is considered any day that increases 1% or more from closing to the next day's high. Use options trading to magnify this profit if desired.
 "Days Valid Trade %" indicates how frequently a valid trade day has happened in the past.
 
-Red day to Green day is how often a stock closes red (negative) and then goes green the next day (positive).
+A "Green Day" is when the closing price of the current date is above the closing price of the previous date.
+A "Red Day" is when the closing price of the current date is below the closing price of the previous date.
 
-Green day to Green day is how often a stock closes green (positive) and then goes green again the next day (positive).
+Red day to Green day is how often a stock has a red day and then the following day it is green.
+
+Green day to Green day is how often a stock has a green day and then the following day it is green again.
 
 "Streak Indicator" is reflective of how often a stock will 'streak,' aka hit multiple greens or reds in a row. A low value means it often flips. A high value means it likes to run red multiple days in a row or run green multiple days in a row.
 
